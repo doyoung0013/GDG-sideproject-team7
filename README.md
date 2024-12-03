@@ -2,6 +2,7 @@
 
 Go로 구현된 레스토랑 예약 관리 시스템입니다.
 
+
 ## 주요 기능
 
 - 레스토랑 목록 조회 및 상세 정보 확인
@@ -10,11 +11,13 @@ Go로 구현된 레스토랑 예약 관리 시스템입니다.
 - 예약 상태 업데이트
 - 레스토랑-사용자 연동
 
+
 ## 기술 스택
 
 - Backend: Go
 - Router: Gorilla Mux
-- Database: SQL
+- Database: MySQL
+
 
 ## API 엔드포인트
 
@@ -41,32 +44,33 @@ GET    /api/user/reservation-list/{id}  # 예약 목록 조회
 POST   /api/link                        # 레스토랑-사용자 연동
 ```
 
+
 ## 프로젝트 구조
 
 ```
-├── config/          # 설정 파일
-├── db/              # 데이터베이스 연결
-├── handlers/        # HTTP 핸들러
-├── services/        # 비즈니스 로직
-└── main.go         # 애플리케이션 진입점
+backend-side-project/
+├── main.go           # 메인 엔트리 포인트
+├── go.mod            # Go 모듈 설정 파일
+├── handlers/         # HTTP 핸들러 함수 모음
+├── services/         # 비즈니스 로직 (서비스 계층)
+├── models/           # 데이터 모델 정의
+├── db/               # 데이터베이스 관련 로직
+│   └── connection.go # DB 연결 설정
+└── config/           # 설정 파일 및 환경 변수
 ```
+
 
 ## 실행 방법
 
-```bash
-git clone https://github.com/GDG-KHU-Side/backend-side-project.git
-cd backend-side-project
-go mod download
-go run main.go
+```
+- .env 파일 추가
 ```
 
 서버는 8080 포트에서 실행됩니다.
 
+
 ## 기여자
 
-- [기여자1 이름]
-- [기여자2 이름]
+- 김도영
+- 이준호
 
-## 라이선스
-
-MIT License
