@@ -68,50 +68,74 @@
 
     <script>
         const restId = window.location.pathname.split('/').pop();
+        const listDiv = document.getElementById('reservation-list');
+        const token = localStorage.getItem('token');
 
-        if (isNaN(restId)) {
-            console.error("Invalid restaurant ID in URL");
-            document.getElementById('reservation-list').innerHTML = `<p>잘못된 경로입니다.</p>`;
-        } else {
-            fetch(`/api/user/reservation-list/${restId}`)
-                .then(response => response.json())
-                .then(data => {
-                    const listDiv = document.getElementById('reservation-list');
-                    if (data.length === 0) {
-                        listDiv.innerHTML = `<p>예약이 없습니다.</p>`;
-                        return;
-                    }
+        const STATUS = {
+            0: { cls: 'status-pending', text: '대기 중' },
+            1: { cls: 'status-complete', text: '입장 완료' },
+            2: { cls: 'status-canceled', text: '취소됨' },
+        };
 
-                    data.forEach(reservation => {
-                        let statusClass = '';
-                        let statusText = '';
-                        if (reservation.is_entry === 0) {
-                            statusClass = 'status-pending';
-                            statusText = '대기 중';
-                        } else if (reservation.is_entry === 1) {
-                            statusClass = 'status-complete';
-                            statusText = '완료';
-                        } else if (reservation.is_entry === 2) {
-                            statusClass = 'status-canceled';
-                            statusText = '취소됨';
-                        }
-
-                        // 예약 카드 HTML 추가
-                        listDiv.innerHTML += `
-                            <div class="reservation-card">
-                                <p class="reservation-id">예약 번호: ${reservation.id}</p>
-                                <p class="reservation-info">고객 연락처: ${reservation.customer_phone_num}</p>
-                                <p class="reservation-info ${statusClass}">상태: ${statusText}</p>
-                            </div>
-                        `;
-                    });
-                })
-                .catch(error => {
-                    console.error('Error fetching reservation list:', error);
-                    document.getElementById('reservation-list').innerHTML = `<p>예약 정보를 가져오는 데 실패했습니다.</p>`;
-                });
+        function authHeaders(extra) {
+            return Object.assign({ 'Authorization': `Bearer ${token}` }, extra || {});
         }
 
+        async function handleError(response) {
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                return;
+            }
+            const data = await response.json().catch(() => ({}));
+            listDiv.innerHTML = `<p>${data.error || '요청에 실패했습니다.'}</p>`;
+        }
+
+        async function loadReservations() {
+            const response = await fetch(`/api/restaurant/${restId}/reservations`, { headers: authHeaders() });
+            if (!response.ok) return handleError(response);
+
+            const data = await response.json();
+            if (data.length === 0) {
+                listDiv.innerHTML = `<p>예약이 없습니다.</p>`;
+                return;
+            }
+            listDiv.innerHTML = data.map(r => {
+                const st = STATUS[r.is_entry] || { cls: '', text: '알 수 없음' };
+                const actions = r.is_entry === 0 ? `
+                    <button onclick="updateStatus(${r.id}, 1)">입장 처리</button>
+                    <button onclick="updateStatus(${r.id}, 2)">취소</button>` : '';
+                return `
+                    <div class="reservation-card">
+                        <p class="reservation-id">예약 번호: ${r.id}</p>
+                        <p class="reservation-info">인원: ${r.count}명</p>
+                        <p class="reservation-info">고객 연락처: ${r.customer_phone_num}</p>
+                        <p class="reservation-info ${st.cls}">상태: ${st.text}</p>
+                        ${actions}
+                    </div>`;
+            }).join('');
+        }
+
+        async function updateStatus(id, status) {
+            const response = await fetch(`/api/reservation/${id}/status`, {
+                method: 'PUT',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ is_entry: status })
+            });
+            if (!response.ok) return handleError(response);
+            loadReservations();
+        }
+
+        if (!token) {
+            window.location.href = '/login';
+        } else if (isNaN(restId)) {
+            listDiv.innerHTML = `<p>잘못된 경로입니다.</p>`;
+        } else {
+            loadReservations().catch(error => {
+                console.error('Error fetching reservation list:', error);
+                listDiv.innerHTML = `<p>예약 정보를 가져오는 데 실패했습니다.</p>`;
+            });
+        }
     </script>
     </body>
 </html>
