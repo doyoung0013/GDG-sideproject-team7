@@ -1,7 +1,12 @@
 package models
 
-import (
-	"time"
+import "time"
+
+// 웨이팅 상태 (reservation.is_entry)
+const (
+	StatusWaiting  int8 = 0
+	StatusEntered  int8 = 1
+	StatusCanceled int8 = 2
 )
 
 type Reservation struct {
@@ -13,23 +18,12 @@ type Reservation struct {
 	IsEntry          int8      `json:"is_entry"`
 }
 
-/*
-func (r *Reservation) Create() error {
-	query := `
-        INSERT INTO reservation (rest_id, count, customer_phone_num, is_entry)
-        VALUES (?, ?, ?, ?)
-    `
-	result, err := db.DB.Exec(query, r.RestID, r.Count, r.CustomerPhoneNum, r.IsEntry)
-	if err != nil {
-		return err
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	r.ID = id
-	return nil
+type CreateReservationRequest struct {
+	RestID           int64  `json:"rest_id"`
+	Count            int    `json:"count"`
+	CustomerPhoneNum string `json:"customer_phone_num"`
 }
-*/
+
+type UpdateReservationStatusRequest struct {
+	IsEntry *int8 `json:"is_entry"`
+}

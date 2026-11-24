@@ -83,7 +83,7 @@
                             <h2 class="restaurant-name">${restaurant.name}</h2>
                             <p class="restaurant-info">${restaurant.description}</p>
                             <p class="restaurant-info">연락처 : ${restaurant.phone_num}</p>
-                            <p class="restaurant-info">대기 예상 시간 : ${restaurant.waiting_time}분</p>
+                            <p class="restaurant-info">현재 대기 : ${restaurant.waiting_count}팀 · 예상 ${restaurant.waiting_time}분</p>
                             <a href="/restaurant/${restaurant.id}" class="detail-link">예약 하러가기</a>
                         </div>
                     `;

@@ -86,37 +86,34 @@
 
     <script>
         document.getElementById('loginForm').addEventListener('submit', async function(event) {
-            event.preventDefault(); // 기본 제출 동작 방지
+            event.preventDefault();
 
-            const LoginEmail = document.getElementById('email').value;
-            const LoginPassword = document.getElementById('password').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
 
             try {
-                const response = await fetch('http://localhost:8080/api/login', {
+                const response = await fetch('/api/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        email: LoginEmail,
-                        password: LoginPassword
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
                 });
+                const data = await response.json();
 
-                if (response.ok) {
-                    const responseData = await response.json();
-                    if (responseData.rest_id) {
-                        window.location.href = `/reservation-list/${responseData.rest_id}`;
-                    } else {
-                        alert('서버 응답에 rest_id가 없습니다.');
-                    }
-                } else {
-                    alert('서버 오류: ' + response.status);
+                if (!response.ok) {
+                    alert(data.error || ('로그인 실패: ' + response.status));
+                    return;
                 }
-    
+
+                localStorage.setItem('token', data.token);
+                const restIds = data.user.rest_ids || [];
+                if (restIds.length > 0) {
+                    window.location.href = `/reservation-list/${restIds[0]}`;
+                } else {
+                    alert('연결된 식당이 없습니다. 먼저 식당을 연결해주세요.');
+                }
             } catch (error) {
                 console.error('로그인 요청 중 오류 발생:', error);
-                alert('로그인 요청 중 오류가 발생했습니다.', error);
+                alert('로그인 요청 중 오류가 발생했습니다.');
             }
         });
     </script>

@@ -1,62 +1,97 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/gorilla/mux"
-
+	"github.com/GDG-KHU-Side/backend-side-project/auth"
 	"github.com/GDG-KHU-Side/backend-side-project/config"
 	"github.com/GDG-KHU-Side/backend-side-project/db"
 	"github.com/GDG-KHU-Side/backend-side-project/handlers"
+	"github.com/GDG-KHU-Side/backend-side-project/middleware"
+	"github.com/GDG-KHU-Side/backend-side-project/repository"
 	"github.com/GDG-KHU-Side/backend-side-project/services"
 )
 
 func main() {
-	conf := config.GetDBConfig()
-
-	err := db.InitDB(conf)
-	if err != nil {
-		log.Fatal("Failed to initialize database:", err)
+	if err := run(); err != nil {
+		log.Fatal(err)
 	}
-	defer db.DB.Close()
+}
 
-	r := mux.NewRouter()
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
-	restaurantService := &services.RestaurantService{}
-	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	userService := &services.UserService{}
-	userHandler := handlers.NewUserHandler(userService)
+	conn, err := db.Open(ctx, cfg.DB)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
 
-	reservationService := &services.ReservationService{}
-	reservationHandler := handlers.NewReservationHandler(reservationService)
+	// 의존성 조립: repository -> service -> handler
+	restaurantRepo := repository.NewRestaurantRepository(conn, cfg.QueryTimeout)
+	userRepo := repository.NewUserRepository(conn, cfg.QueryTimeout)
+	reservationRepo := repository.NewReservationRepository(conn, cfg.QueryTimeout)
 
-	//page
-	r.HandleFunc("/", handlers.IndexHandler)
-	r.HandleFunc("/restaurant-list", handlers.RestaurantListHandler)
-	r.HandleFunc("/restaurant/{id:[0-9]+}", handlers.RestaurantDetailHandler)
+	tokens := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTTTL)
 
-	r.HandleFunc("/login", handlers.UserLoginHandler)
+	router := newRouter(routerDeps{
+		restaurants:  handlers.NewRestaurantHandler(services.NewRestaurantService(restaurantRepo)),
+		users:        handlers.NewUserHandler(services.NewUserService(userRepo, tokens)),
+		reservations: handlers.NewReservationHandler(services.NewReservationService(reservationRepo, restaurantRepo, userRepo)),
+		tokens:       tokens,
+	})
 
-	r.HandleFunc("/reservation-list/{id:[0-9]+}", handlers.ReservationListHandler)
+	limiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+	go limiter.Cleanup(ctx)
 
-	//api
-	r.HandleFunc("/api/restaurant-list", restaurantHandler.GetRestaurantList).Methods("GET")
-	r.HandleFunc("/api/restaurant/{id}", restaurantHandler.GetRestaurant).Methods("GET")
-	r.HandleFunc("/api/reservation", restaurantHandler.CreateReservation).Methods("POST")
-	r.HandleFunc("/api/reservation/{id}/status", restaurantHandler.UpdateReservationStatus).Methods("PUT")
+	srv := &http.Server{
+		Addr: ":" + cfg.Port,
+		Handler: middleware.Chain(router,
+			middleware.Recover,
+			middleware.Logging,
+			middleware.CORS(cfg.CORSAllowedOrigins),
+			limiter.Middleware,
+		),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
-	r.HandleFunc("/api/login", userHandler.LoginUser).Methods("POST")
-	r.HandleFunc("/api/register", userHandler.CreateUser).Methods("POST")
-	r.HandleFunc("/api/user/{id}", userHandler.GetUser).Methods("GET")
-	r.HandleFunc("/api/user", userHandler.UpdateUser).Methods("PUT")
-	r.HandleFunc("/api/user/{id}", userHandler.DeleteUser).Methods("DELETE")
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("server listening on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
 
-	r.HandleFunc("/api/user/reservation-list/{id}", reservationHandler.GetReservationList).Methods("GET")
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+	}
 
-	r.HandleFunc("/api/link", userHandler.LinkRestaurant).Methods("POST")
-
-	log.Println("Server starting at :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Println("shutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	log.Println("server stopped")
+	return nil
 }

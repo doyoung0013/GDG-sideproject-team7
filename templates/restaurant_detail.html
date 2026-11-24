@@ -91,37 +91,47 @@
 
     <script>
         const restId = window.location.pathname.split('/').pop();
-        
+
         fetch(`/api/restaurant/${restId}`)
-            .then(response => response.json())
+            .then(async response => {
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || '식당 정보를 불러오지 못했습니다.');
+                return data;
+            })
             .then(data => {
                 document.getElementById('restaurant-name').textContent = data.name;
                 document.getElementById('restaurant-info').innerHTML = `
-                    <p class="info-text">${data.description}</p>    
+                    <p class="info-text">${data.description}</p>
                     <p class="info-text">주소 : ${data.address}</p>
                     <p class="info-text">연락처 : ${data.phone_num}</p>
+                    <p class="info-text">현재 대기 : ${data.waiting_count}팀</p>
                     <p class="info-text">예상 대기 시간 : ${data.waiting_time}분</p>
                 `;
+            })
+            .catch(error => {
+                document.getElementById('restaurant-name').textContent = error.message;
             });
 
-        function makeReservation() {
-            const count = document.getElementById('count').value;
+        async function makeReservation() {
+            const count = parseInt(document.getElementById('count').value, 10);
             const phone = document.getElementById('phone').value;
-            
-            fetch('/api/reservation', {
+
+            const response = await fetch('/api/reservation', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    rest_id: parseInt(restId),
-                    count: parseInt(count),
+                    rest_id: parseInt(restId, 10),
+                    count: count,
                     customer_phone_num: phone
                 })
-            }).then(response => {
-                if (response.ok) {
-                    alert('예약이 완료되었습니다.');
-                    location.reload();
-                }
             });
+            if (response.ok) {
+                alert('예약이 완료되었습니다.');
+                location.reload();
+            } else {
+                const data = await response.json().catch(() => ({}));
+                alert(data.error || '예약에 실패했습니다.');
+            }
         }
     </script>
 </body>
